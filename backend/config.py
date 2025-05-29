@@ -1,5 +1,4 @@
 from pydantic import BaseModel, validator
-from typing import Optional
 import os
 import yaml
 from pathlib import Path

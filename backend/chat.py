@@ -1,24 +1,37 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Dict, Any
 import httpx
-from configs import Config
+from config import Config
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-class Message(BaseModel):
-    role: str
-    content: str
+class Message:
+    def __init__(self, role: str, content: str):
+        self.role = role
+        self.content = content
 
-class ChatRequest(BaseModel):
-    model: str
-    messages: List[Message]
-    stream: bool = False
+    def to_dict(self) -> Dict[str, str]:
+        return {"role": self.role, "content": self.content}
 
-class ChatResponse(BaseModel):
-    choices: List[dict]
+class ChatRequest:
+    def __init__(self, model: str, messages: List[Message], stream: bool = False):
+        self.model = model
+        self.messages = messages
+        self.stream = stream
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "model": self.model,
+            "messages": [msg.to_dict() for msg in self.messages],
+            "stream": self.stream
+        }
+
+class ChatResponse:
+    def __init__(self, choices: List[Dict[str, Any]], **kwargs):
+        self.choices = choices
+        # 忽略其他未定义的字段
 
 class ChatService:
     def __init__(self, config: Config):
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.Client(timeout=30.0)
         self.base_url = "https://api.deepseek.com/chat/completions"
         self.api_key = config.apikey
 
@@ -30,17 +43,16 @@ class ChatService:
             retry_if_exception_type(httpx.NetworkError)
         )
     )
-    
-    async def chat(self, request: ChatRequest) -> ChatResponse:
+    def chat(self, request: ChatRequest) -> ChatResponse:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
 
         try:
-            response = await self.client.post(
+            response = self.client.post(
                 self.base_url,
-                json=request.dict(),
+                json=request.to_dict(),
                 headers=headers
             )
             response.raise_for_status()
@@ -52,7 +64,7 @@ class ChatService:
             print(f"Unexpected error: {str(e)}")
             raise ValueError(f"Unexpected error: {str(e)}") from e
 
-    async def close(self):
-        await self.client.aclose()
+    def close(self):
+        self.client.close()
 
 __all__ = ['Message', 'ChatRequest', 'ChatResponse', 'ChatService']

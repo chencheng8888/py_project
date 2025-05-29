@@ -1,12 +1,20 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
 from config import load_config
 from chat import ChatService
-from suggest import SuggestController,SuggestRequest
-from evaluate import EvaluateController,EvaluateRequest
+from suggest import SuggestController
+from evaluate import EvaluateController
 
-app = FastAPI()
+app = Flask(__name__)
+
+# CORS配置
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["*"]
+    }
+})
 
 # 加载配置和初始化服务
 try:
@@ -17,33 +25,30 @@ try:
 except Exception as e:
     raise RuntimeError(f"Failed to initialize services: {e}")
 
-# CORS配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.post("/get_evaluate")
-async def evaluate(request: EvaluateRequest):
+@app.route('/get_evaluate', methods=['POST'])
+def evaluate():
     try:
-        result = await evaluate_ctrl.evaluate(request)
-        return {"result": result}
-    except HTTPException as e:
-        raise e
+        data = request.get_json()
+        result = evaluate_ctrl.evaluate(data)  # 调用同步方法
+        return jsonify({"result": result})
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return jsonify({"error": str(e)}), 400
 
-@app.post("/get_suggest")
-async def suggest(request: SuggestRequest):
+@app.route('/get_suggest', methods=['POST', 'OPTIONS'])
+def suggest():
+    if request.method == 'OPTIONS':
+        # 处理预检请求
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        response.headers.add("Access-Control-Allow-Headers", "*")
+        return response
     try:
-        result = await suggest_ctrl.suggest(request)
-        return {"result": result}
-    except HTTPException as e:
-        raise e
+        data = request.get_json()
+        result = suggest_ctrl.suggest(data)  # 调用同步方法
+        return jsonify({"result": result})
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return jsonify({"error": str(e)}), 400
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080)
